@@ -1,0 +1,4 @@
+# Numerical alpha from NVT linear fit
+dPdT  2.69965662273
+K     25.070961507
+alpha 0.107680617753
