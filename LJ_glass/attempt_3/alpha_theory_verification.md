@@ -55,15 +55,11 @@ $$+\xi_\eta\cdot\mathcal{H}^{-1}\cdot U''':\mathcal{H}^{-1}
 ### Combined formula used in code
 
 $$
-\boxed{
-\alpha = -\frac{1}{2 K V \bar{d}} \sum_\ell \frac{1}{\omega_\ell^2}
-\Big[
-uEtaXX(\Psi_\ell, \Psi_\ell)
-+
-tess3(\mathbf{u}_{\mathrm{na}}, \Psi_\ell, \Psi_\ell)
+\alpha = -\frac{1}{2 K V \bar{d}} \sum_\ell \frac{1}{\omega_\ell^2} \Big[
+uEtaXX(\Psi_\ell, \Psi_\ell) + tess3(\mathbf{u}_{\mathrm{na}}, \Psi_\ell, \Psi_\ell)
 \Big]
-}
 $$
+
 Both terms enter with the **same sign** and the **same $-1/(2KV\bar{d})$ prefactor**.
 This is the single expression implemented in `alpha_theory.py`.
 
