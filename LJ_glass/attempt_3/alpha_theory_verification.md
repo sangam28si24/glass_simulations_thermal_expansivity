@@ -29,12 +29,11 @@ where:
 Substituting $\mathcal{H}^{-1} = \sum_\ell \frac{1}{\omega_\ell^2}\,\Psi_\ell \otimes \Psi_\ell$ (eigenvectors $\Psi_\ell$, eigenvalues $\omega_\ell^2$):
 
 ### Harmonic term expansion
-
 $$
 -\frac{\partial^3 U}{\partial \eta\,\partial \mathbf{x}^2} : \mathcal{H}^{-1}
-= -\sum_\ell \frac{1}{\omega_\ell^2}\;
+= -\sum_\ell \frac{1}{\omega_\ell^2}
 \underbrace{\sum_{k,m} \frac{\partial^3 U}{\partial \eta\,\partial x_k\,\partial x_m}
-(\Psi_\ell)_k(\Psi_\ell)_m}_{\operatorname{uEtaXXonTwoVectors}(\Psi_\ell,\Psi_\ell)}
+(\Psi_\ell)_k (\Psi_\ell)_m}_{\mathit{u\_eta\_x\_x\_on\_two\_vectors}(\Psi_\ell, \Psi_\ell)}
 $$
 ### Anharmonic term expansion
 
@@ -57,9 +56,9 @@ $$
 \boxed{
 \alpha = -\frac{1}{2 K V \bar{d}} \sum_\ell \frac{1}{\omega_\ell^2}
 \Big[
-\operatorname{uEtaXX}(\Psi_\ell,\Psi_\ell)
+\mathit{u\_eta\_x\_x}(\Psi_\ell, \Psi_\ell)
 +
-\operatorname{tessThree}(\mathbf{u}_{\mathrm{na}},\Psi_\ell,\Psi_\ell)
+\mathit{tess3}(\mathbf{u}_{\mathrm{na}}, \Psi_\ell, \Psi_\ell)
 \Big]
 }
 $$
