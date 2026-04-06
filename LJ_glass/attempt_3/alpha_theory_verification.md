@@ -30,10 +30,12 @@ Substituting $\mathcal{H}^{-1} = \sum_\ell \frac{1}{\omega_\ell^2}\,\Psi_\ell \o
 
 ### Harmonic term expansion
 
-$$-\frac{\partial^3 U}{\partial\eta\,\partial\mathbf{x}^2}:\mathcal{H}^{-1}
-= -\sum_\ell \frac{1}{\omega_\ell^2}\;
-  \underbrace{\sum_{k,m} \frac{\partial^3 U}{\partial\eta\,\partial x_k\,\partial x_m}\,
-  (\Psi_\ell)_k\,(\Psi_\ell)_m}_{\texttt{u\_eta\_x\_x\_on\_two\_vectors}(\Psi_\ell,\,\Psi_\ell)}$$
+$$
+-\frac{\partial^3 U}{\partial \eta\,\partial \mathbf{x}^2} : \mathcal{H}^{-1}
+= -\sum_\ell \frac{1}{\omega_\ell^2}
+\underbrace{\sum_{k,m} \frac{\partial^3 U}{\partial \eta\,\partial x_k\,\partial x_m}
+(\Psi_\ell)_{k} (\Psi_\ell)_{m}}{uEtaXXonTwoVectors(\Psi_\ell, \Psi_\ell)}
+$$
 
 ### Anharmonic term expansion
 
@@ -52,10 +54,16 @@ $$+\xi_\eta\cdot\mathcal{H}^{-1}\cdot U''':\mathcal{H}^{-1}
 
 ### Combined formula used in code
 
-$$\boxed{\alpha = -\frac{1}{2KV\bar{d}}\sum_\ell\frac{1}{\omega_\ell^2}
-\Big[\texttt{u\_eta\_x\_x}(\Psi_\ell,\Psi_\ell)
-+\texttt{tess3}(\mathbf{u}_\text{na},\Psi_\ell,\Psi_\ell)\Big]}$$
-
+$$
+\boxed{
+\alpha = -\frac{1}{2 K V \bar{d}} \sum_\ell \frac{1}{\omega_\ell^2}
+\Big[
+uEtaXX(\Psi_\ell, \Psi_\ell)
++
+tess3(\mathbf{u}_{\mathrm{na}}, \Psi_\ell, \Psi_\ell)
+\Big]
+}
+$$
 Both terms enter with the **same sign** and the **same $-1/(2KV\bar{d})$ prefactor**.
 This is the single expression implemented in `alpha_theory.py`.
 
