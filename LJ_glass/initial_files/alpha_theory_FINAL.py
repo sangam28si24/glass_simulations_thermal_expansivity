@@ -290,7 +290,7 @@ def process_glass(g, K, data_dir, cache_dir):
         valid_evecs    = cached["valid_evecs"]
         term1_per_mode = cached["term1_per_mode"]
         term2_per_mode = cached["term2_per_mode"]
-        V              = float(cached["V"])
+        V = cached["V"].item()
         print(f"    [g={g}] term1 unweighted sum = {term1_per_mode.sum():+.6e}")   # add
         print(f"    [g={g}] term2 unweighted sum = {term2_per_mode.sum():+.6e}")   # add
     else:
