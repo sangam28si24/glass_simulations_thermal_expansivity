@@ -984,55 +984,167 @@ double get_first_order_dilatancy(){
 
 
 
-/* Main: loop over all 10 LJ glass inherent states (s00000 to s00009).
-   Reads  3dlj_N4000_sXXXXX.dat  from the current directory.
-   Writes elasticity_results.txt with columns:
-      serial  pressure  u_per_N  G  K  first_order_dilatancy  second_order_dilatancy
-   No command-line arguments required.  Run as:  ./elasticity
-*/
-int main(int n, char **inputStrings){
-	int t0, g;
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Output helpers for alpha_theory.py
+ * Called once per glass after calculateEverything() has been run.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* bonds_g{g}.txt  —  one row per contact: i j rij_x rij_y rij_z first second third */
+void write_bonds_text(int glass_idx){
+	int l;
+	char fname[256];
+	sprintf(fname, "bonds_g%d.txt", glass_idx);
+	FILE *f = fopen(fname, "w");
+	fprintf(f, "# i j rij_x rij_y rij_z first second third\n");
+	for (l=0; l<contacts; l++){
+		fprintf(f, "%d %d %.15g %.15g %.15g %.15g %.15g %.15g\n",
+			lookupBond[2*l + I_INDEX],
+			lookupBond[2*l + J_INDEX],
+			rij[DIM*l + X_COMP],
+			rij[DIM*l + Y_COMP],
+			rij[DIM*l + Z_COMP],
+			first[l], second[l], third[l]);
+	}
+	fclose(f);
+}
+
+/* meta_g{g}.txt  —  scalar globals needed by alpha_theory.py */
+void write_meta_text(int glass_idx){
+	char fname[256];
+	sprintf(fname, "meta_g%d.txt", glass_idx);
+	FILE *f = fopen(fname, "w");
+	fprintf(f, "N %d\n",        N);
+	fprintf(f, "DIM %d\n",      DIM);
+	fprintf(f, "contacts %d\n", contacts);
+	fprintf(f, "V %.15g\n",     V);
+	fprintf(f, "L %.15g\n",     L);
+	fprintf(f, "pressure %.15g\n", pressure);
+	fclose(f);
+}
+
+/* hessian_g{g}.txt  —  sparse COO text (row col val), same maths as writeHessian()
+ * but written as plain text so numpy/scipy can read it directly.               */
+void write_hessian_text(int glass_idx){
+	int i, j, l, m, alpha, beta, a, b;
+	double thisHes;
+	double *diagonal;
+	char fname[256];
+
+	sprintf(fname, "hessian_g%d.txt", glass_idx);
+	FILE *f = fopen(fname, "w");
+
+	diagonal = (double *)calloc(N*DIM*DIM, sizeof(double));
+
+	/* off-diagonal blocks */
+	for (l=0; l<contacts; l++){
+		i = lookupBond[2*l + I_INDEX];
+		j = lookupBond[2*l + J_INDEX];
+		m = 0;
+		for (alpha=0; alpha<DIM; alpha++){
+			for (beta=0; beta<DIM; beta++){
+				thisHes = -second[l]*rij[DIM*l+alpha]*rij[DIM*l+beta]
+				          -first[l]*DELTA(alpha,beta);
+				a = DIM*i + alpha;
+				b = DIM*j + beta;
+				fprintf(f, "%d\t%d\t%.15g\n%d\t%d\t%.15g\n",
+					a, b,  thisHes,
+					b, a,  thisHes);
+				/* accumulate diagonal contribution (positive) */
+				diagonal[DIM*DIM*i + m] += -thisHes;
+				diagonal[DIM*DIM*j + m] += -thisHes;
+				m++;
+			}
+		}
+	}
+	/* diagonal blocks */
+	for (i=0; i<N; i++){
+		m = 0;
+		for (alpha=0; alpha<DIM; alpha++){
+			for (beta=0; beta<DIM; beta++){
+				a = DIM*i + alpha;
+				b = DIM*i + beta;
+				fprintf(f, "%d\t%d\t%.15g\n", a, b, diagonal[DIM*DIM*i + m]);
+				m++;
+			}
+		}
+	}
+	free(diagonal);
+	fclose(f);
+}
+
+/* vna_eta_g{g}.txt  —  N rows × 3 cols, compression non-affine velocities.
+ * Calls compression_nonaffine_velocities() which returns −H⁻¹·ξ_η (sign
+ * already handled inside the C solver; alpha_theory.py accounts for it).      */
+void write_vna_eta_text(int glass_idx){
+	int i;
+	double *vna;
+	char fname[256];
+
+	sprintf(fname, "vna_eta_g%d.txt", glass_idx);
+	vna = (double *)calloc(DIM*N, sizeof(double));
+	compression_nonaffine_velocities(vna);
+
+	FILE *f = fopen(fname, "w");
+	for (i=0; i<N; i++){
+		fprintf(f, "%.15g\t%.15g\t%.15g\n",
+			vna[DIM*i + X_COMP],
+			vna[DIM*i + Y_COMP],
+			vna[DIM*i + Z_COMP]);
+	}
+	fclose(f);
+	free(vna);
+}
+
+int main(int n,char **inputStrings){
+	int t0,t1;
+	int q,serial,numOfSnaps;
 	double bulk_modulus, shear_modulus;
-	double k_born, k_na, g_born, g_na;
+        double k_born, k_na, g_born, g_na;
 	double first_order, second_order;
 	char snapFileName[1024];
+	char outFileName[128];
 	FILE *outFile;
-
+	
 	allocate_memory();
+	
 	srand(time(0));
+	
 	t0 = (int)time(0);
-
-	outFile = fopen("elasticity_results.txt", "w");
-	fprintf(outFile, "# serial   pressure    u_per_N      G           K           first_order  second_order\n");
-
-	for (g = 0; g < 10; g++){
-		sprintf(snapFileName, "3dlj_N%d_s%.5d.dat", N, g);
+	sscanf(inputStrings[1],"%d",&serial);
+        sscanf(inputStrings[2],"%d",&numOfSnaps);
+	
+	sprintf(outFileName,"3dlj_elasticity_N%d_s%.3d.dat",N,serial);
+	outFile = fopen(outFileName,"wb");
+	
+	for (q=serial*numOfSnaps; q<(serial+1)*numOfSnaps; q++){
+		sprintf(snapFileName,"3dlj_N%d_s%.5d.dat",N,q);
 		if ( readSnapShot(snapFileName) ){
-			printf("read %s,  |grad|/|f| = %g\n", snapFileName,
-			       typicalGrad / typicalInteractionStrength);
-
+			printf("read %s, ratio %g\n",snapFileName,typicalGrad/typicalInteractionStrength);
+				
 			get_shear_modulus(&g_born, &g_na);
 			shear_modulus = g_born - g_na;
-
+				
 			get_bulk_modulus(&k_born, &k_na);
-			bulk_modulus = (k_born - k_na) / ((double)(DIM * DIM)) + pressure;
-
-			first_order  = get_first_order_dilatancy();
+			bulk_modulus = (k_born-k_na)/( (double)(DIM*DIM) ) + pressure;
+	
+			first_order = get_first_order_dilatancy();
 			second_order = get_second_order_dilatancy();
+			
+			fprintf(outFile,"%d\t%.10g\t%.10g\t%.10g\t%.10g\t%.10g\t%.10g\n",q,u/DOUBLE_N,pressure,shear_modulus,bulk_modulus,first_order,second_order);
 
-			/* columns: serial  pressure  u/N  G  K  dil1  dil2 */
-			fprintf(outFile, "%d\t%.10g\t%.10g\t%.10g\t%.10g\t%.10g\t%.10g\n",
-			        g, pressure, u/DOUBLE_N,
-			        shear_modulus, bulk_modulus,
-			        first_order, second_order);
-			fflush(outFile);
+			/* Write files needed by alpha_theory.py */
+			printf("  writing alpha_theory input files for glass %d ...\n", q);
+			write_bonds_text(q);
+			write_meta_text(q);
+			write_hessian_text(q);
+			write_vna_eta_text(q);
+			printf("  done writing alpha_theory files for glass %d\n", q);
 		}
 		else
-			printf("WARNING: %s not found, skipping.\n", snapFileName);
+			printf("%s not about\n",snapFileName);
 	}
-
 	fclose(outFile);
-	printf("Done. Took %d seconds.\n", (int)time(0) - t0);
+	printf("took %d seconds\n",(int)time(0) - t0);
 	free_everything();
 	return 0;
 }

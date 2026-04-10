@@ -1,8 +1,34 @@
-/* 3d LJ (Kob-Andersen-style binary mixture) NVT code with Nose-Hoover thermostat.
-   Potential: phi(r) = 4[ (sigma/r)^12 - (sigma/r)^6 + C0 + C2*(r/sigma)^2
-                                                       + C4*(r/sigma)^4 + C6*(r/sigma)^6 ]
-   Cutoff: r/sigma = 2.5  (standard LJ cutoff with smooth polynomial correction).
-   N=4000, rho=0.541.  Glass files: 3dlj_N4000_sXXXXX.dat */
+/*  CHANGES FROM 3dipl
+ *  #  Parameter/item          3dipl value              LJ value
+ *  1  N                       2048                     4000
+ *  2  RHO                     0.82                     0.541
+ *  3  CUTOFF_SQRD             1.48*1.48                CUTOFF*CUTOFF  (CUTOFF=2.5)
+ *  4  C_0                    -1.1106337662511798        0.075421526038318
+ *  5  C_2                     1.2676152372297065       -0.035416041040039
+ *  6  C_4                    -0.4960406072849212        0.005708815153688
+ *  7  C_6                     0.0660511826415732       -0.000318029410118
+ *  8  N_0 = 10               (dipolar repulsion)       N_REP=12, N_ATT=6  (LJ 12-6)
+ *  9  DR                      0.35                     0.1
+ * 10  MAX_NEBZ                128                      256
+ * 11  MAX_CELLS               N/3                      N
+ * 12  calculateForces kernel  dipolar force/energy     LJ force/energy (see below)
+ * 13  pressure reset          missing (bug)            added pressure=0.0
+ * 14  pressure virial         dx^2+dy^2 only (bug)     dx^2+dy^2+dz^2  (3D)
+ * 15  run_NH signature        run_NH(duration)         run_NH(duration, outFileName)
+ * 16  main                    FCC start, T hardcoded   reads glass file, cmd-line args
+ *
+ * invSizeSqrd table and composition (50/50) are UNCHANGED.
+ *
+ * LJ force kernel (s = r2OverSigma2 = r^2/sigma^2):
+ *   sigma2OverR2 = 1/s          = (sigma/r)^2
+ *   sigma6OverR6 = sigma2OverR2^3  = (sigma/r)^6
+ *   sigma8OverR8 = sigma6OverR6 * sigma2OverR2  = (sigma/r)^8
+ *   g = 4*(sigma8OverR8*(N_REP*sigma6OverR6 - N_ATT)
+ *           - 2*C_2 - s*(4*C_4 + 6*s*C_6)) * invSigmaSqrd
+ *   u_pair = 4*(sigma6OverR6*(sigma6OverR6-1)
+ *              + s*(C_2 + s*(C_4 + s*C_6)) + C_0)
+ */
+
 #include <string.h>
 #include <time.h>
 #include <stdio.h>
@@ -11,42 +37,39 @@
 
 
 //notice that here N = 4n^3 with n some integer. here n^3 = 1000 = 10^3 giving N=4000
-#define	N							4000
-#define	DOUBLE_N					((double)N)
-#define	DIM							3
-#define	RHO							0.541
-#define	TAU_NH						1.0		//for NH thermostat
-#define	TAU_B						3.0		//for berendsen thermostat
-#define	NUM_OF_DOF					((double)(DIM*N - DIM - 1)) //momentum & energy conservation
+#define	N					4000
+#define	DOUBLE_N			((double)N)
+#define	DIM					3
+#define	RHO					0.541
+#define	TAU_NH				1.0		//for NH thermostat
+#define	TAU_B				3.0		//for berendsen thermostats
+#define	NUM_OF_DOF			((double)(DIM*N - DIM - 1)) //momentum & energy conservation, need it in double
 
-/* LJ potential parameters *****************************************************/
-#define	CUTOFF					2.5
-#define	CUTOFF_SQRD				(CUTOFF * CUTOFF)
-#define	C_0						(0.075421526038318)
-#define	C_2						(-0.035416041040039)
-#define	C_4						(0.005708815153688)
-#define	C_6						(-0.000318029410118)
-#define	N_REP					12.0		/* repulsive exponent   */
-#define	N_ATT					6.0		/* attractive exponent  */
-/*******************************************************************************/
+/* stuff that we don't touch usually */
+#define	TIME_STEP				0.005
+#define	HALF_TIME_STEP			0.5*TIME_STEP
+#define	DELTA(a,b)				((a)==(b)?1.0:0.0)
+#define	MAX_NEBZ				256
+#define	MAX_CELLS				(N)
+#define	X_COMP				0
+#define 	Y_COMP 				1
+#define 	Z_COMP 				2
+#define	CUTOFF				2.5
+#define	CUTOFF_SQRD			(CUTOFF*CUTOFF)
+#define	C_0					(0.075421526038318)
+#define	C_2					(-0.035416041040039)
+#define	C_4					(0.005708815153688)
+#define	C_6					(-0.000318029410118)
+#define	N_REP				12.0
+#define	N_ATT				6.0
+#define	DR					0.1
 
 /* constant constants... :P*******************************************************/
-#define	LENGTH				1.0
-#define	HALF_LENGTH			0.5
+#define	LENGTH			1.0
+#define	HALF_LENGTH		0.5
 
-#define	TWO_PI					6.28318530717958
+#define	TWO_PI				6.28318530717958
 #define	UNI		((double)rand()/((double)RAND_MAX + 1.0))
-
-/* time-step and structural defines *******************************************/
-#define	TIME_STEP				0.001
-#define	HALF_TIME_STEP				(0.5*TIME_STEP)
-#define	DELTA(a,b)				((a)==(b)?1.0:0.0)
-#define	MAX_NEBZ				128
-#define	MAX_CELLS				(N/3)
-#define	X_COMP					0
-#define	Y_COMP					1
-#define	Z_COMP					2
-#define	DR					0.10
 
 
 void initializeSystem();
@@ -366,11 +389,11 @@ void calculateForces(){
 	int i,j,m,k;
 	double g,dx,dy,dz,r2OverSigma2,invSigmaSqrd;
 	double sigma2OverR2,sigma6OverR6,sigma8OverR8,temp;
-
+	
 	//set stuff to zero
 	u = 0.0; stress = 0.0; pressure = 0.0; typicalInteractionStrength=0.0;
 	for (i=0;i<N;i++){ fx[i] = 0.0; fy[i] = 0.0; fz[i] = 0.0; }
-
+	
 	for (i=0;i<N-1;i++){
 		m = numOfNebz[i];
 		for (k=0;k<m;k++){
@@ -379,7 +402,7 @@ void calculateForces(){
 				dx = rx[j] - rx[i];
 				dy = ry[j] - ry[i];
 				dz = rz[j] - rz[i];
-				// mess due to periodic boundary conditions
+				// mess due to periodic boundary conditions 
 				if ( dx >= HALF_LENGTH )
 					dx -= LENGTH;
 				else if ( dx < -HALF_LENGTH )
@@ -392,11 +415,10 @@ void calculateForces(){
 					dz -= LENGTH;
 				else if ( dz < -HALF_LENGTH )
 					dz += LENGTH;
-				// end of mess
+				// end of mess 
 				invSigmaSqrd = invSizeSqrd[type[i]][type[j]];
 				r2OverSigma2 = L*L*( dx*dx + dy*dy + dz*dz )*invSigmaSqrd;
-				if ( r2OverSigma2 < CUTOFF_SQRD ){
-					/* LJ force: g = -(1/r)(dphi/dr), so F_alpha = g * r_alpha */
+				if (r2OverSigma2 < CUTOFF_SQRD){
 					sigma2OverR2 = 1.0/r2OverSigma2;
 					sigma6OverR6 = sigma2OverR2*sigma2OverR2*sigma2OverR2;
 					sigma8OverR8 = sigma6OverR6*sigma2OverR2;
@@ -404,7 +426,6 @@ void calculateForces(){
 					          - 2.0*C_2
 					          - r2OverSigma2*(4.0*C_4 + 6.0*r2OverSigma2*C_6)
 					        )*invSigmaSqrd;
-
 					temp = L*dx*g;
 					fx[j] += temp;
 					fx[i] -= temp;
@@ -415,14 +436,11 @@ void calculateForces(){
 					temp = L*dz*g;
 					fz[j] += temp;
 					fz[i] -= temp;
-
-					/* LJ energy */
 					u += 4.0*( sigma6OverR6*(sigma6OverR6 - 1.0)
 					           + r2OverSigma2*(C_2 + r2OverSigma2*(C_4 + r2OverSigma2*C_6))
 					           + C_0 );
-
-					pressure += g*L*L*( dx*dx + dy*dy + dz*dz );
-					typicalInteractionStrength += g*g*L*L*( dx*dx + dy*dy + dz*dz );
+					pressure += g*L*L*( dx*dx + dy*dy + dz*dz ); // notice that g = f/r, so this is f x r (3D)
+					typicalInteractionStrength += g*g*L*L*( dx*dx + dy*dy + dz*dz ); // notice that g = f/r, so this is f^2
 				}
 			}
 		}
@@ -432,7 +450,7 @@ void calculateForces(){
 	for (typicalGrad = 0.0,i=0;i<N;i++)
 		typicalGrad += fx[i]*fx[i] + fy[i]*fy[i] + fz[i]*fz[i];
 	typicalGrad = sqrt(typicalGrad/DOUBLE_N);
-	typicalInteractionStrength = sqrt(typicalInteractionStrength/DOUBLE_N);
+	typicalInteractionStrength = sqrt(typicalInteractionStrength/DOUBLE_N); // notice we do not account for #interactions/particle since we only care about the order of magnitude
 	return;
 }
 
@@ -634,34 +652,24 @@ void advanceTimeNoseHoover() {
 
 void run_NVE(double duration){
         int k,steps,between=256;
-        //FILE *outFile;
-	
-        //outFile = fopen("conservation_test.dat","wb");
         steps = (int)(duration/TIME_STEP);
-        
         for (k=0; k<steps; k++){
                 advanceTimeNVE();
-                if ( !(k%between) ){
-                        //fprintf(outFile,"%.8g\t%.8g\t%.8g\t%.12g\n",(double)k*TIME_STEP, kinetic/DOUBLE_N, u/DOUBLE_N, (kinetic + u)/DOUBLE_N );
+                if ( !(k%between) )
 			printf("%.8g\t%.8g\t%.8g\t%.12g\n",(double)k*TIME_STEP, kinetic/DOUBLE_N, u/DOUBLE_N, (kinetic + u)/DOUBLE_N );
-                }
                 if ( !(k%16384) )
                         fixDrift();
         }
-        //fclose(outFile);
         return;
 }
 
 void run_berendsen(double duration){
         int k,steps,between=128;
-        
         steps = (int)(duration/TIME_STEP);
-        
         for (k=0; k<steps; k++){
                 advanceTimeBerendsen();
 		if ( !(k%between) )
                 	printf("%.8g\t%.8g\t%.8g\n",(double)k*TIME_STEP, kinetic/DOUBLE_N, u/DOUBLE_N );
-                
 		if ( !(k%16384) )
                         fixDrift();
         }
@@ -696,18 +704,17 @@ int main(int argc, char **argv){
 	char snapFileName[256];
 	char outFileName[256];
 
-	/* ---- read inputs from command line ---- */
-	/* Usage:  ./nvt  <temperature>  <glass_serial>       */
-	/* Example: ./nvt 0.01 3                               */
+	/* Usage:  ./3dlj_nvt  <temperature>  <glass_serial>  */
+	/* Example: ./3dlj_nvt 0.5 0                           */
 	if(argc < 3){
-		printf("Usage: ./nvt <temperature> <glass_serial_0_to_9>\n");
+		printf("Usage: ./3dlj_nvt <temperature> <glass_serial>\n");
 		return 1;
 	}
 	sscanf(argv[1], "%lf", &T);
 	sscanf(argv[2], "%d",  &glass_serial);
 
 	allocate_memory();
-	srand(time(0) + glass_serial);   /* different random seed per glass */
+	srand(time(0) + glass_serial);
 
 	/* load the LJ glass inherent state */
 	sprintf(snapFileName, "3dlj_N%d_s%.5d.dat", N, glass_serial);
@@ -726,7 +733,7 @@ int main(int argc, char **argv){
 	fixDrift();
 
 	/* name the output file */
-	sprintf(outFileName, "nvt_lj_T%.4f_g%d.dat", T, glass_serial);
+	sprintf(outFileName, "nvt_lj_T%.6f_g%d.dat", T, glass_serial);
 
 	/* run */
 	run_berendsen(20.0);         /* fast thermalisation          */
@@ -736,5 +743,3 @@ int main(int argc, char **argv){
 	free_everything();
 	return 0;
 }
-
-

@@ -1,15 +1,2 @@
 .vscode/
-LJ_glass/attempt_1/initial_files/evecs_g0.npy
-LJ_glass/attempt_1/initial_files/evecs_g1.npy
-LJ_glass/attempt_1/initial_files/evecs_g2.npy
-LJ_glass/attempt_1/initial_files/evecs_g3.npy
-LJ_glass/attempt_1/initial_files/evecs_g4.npy
-LJ_glass/attempt_1/initial_files/evecs_g5.npy
-LJ_glass/attempt_1/initial_files/evecs_g6.npy
-LJ_glass/attempt_1/initial_files/evecs_g7.npy
-LJ_glass/attempt_1/initial_files/evecs_g8.npy
-LJ_glass/attempt_1/initial_files/evecs_g9.npy
-
-LJ_glass/attempt_2/initial_files/alpha_cache
-LJ_glass/attempt_3/initial_files/alpha_cache
-LJ_glass/attempt_4/initial_files/alpha_cache
+LJ_glass/initial_files/alpha_cache
