@@ -1,0 +1,6 @@
+# alpha_theory_spring.py output
+# Network N=4000 z=16.24 serial=0
+# K=1.40192197  V=4000.000000
+# n_phys_modes=11997
+# serial  alpha_harmonic  alpha_anharmonic  alpha_total
+glass_0000  -7.13128133e-01  -8.43395002e-01  -1.55652314e+00

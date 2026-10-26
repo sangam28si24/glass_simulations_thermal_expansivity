@@ -1,0 +1,2 @@
+# glass   K              alpha_theory   alpha_harm     alpha_anharm
+     0        1.401922     -0.53411088       -0.574211    +0.040100125
